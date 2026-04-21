@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>IPA Leaflet Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/esri-leaflet/dist/esri-leaflet.js"></script>
+
+  <style>
+    html, body, #map {
+      height: 100%; margin: 0;
+	    font-family: Arial, Helvetica, sans-serif;
+        font-size: 16px;
+        color: #323232;
+    }
+	.basemap-filter {
+	  filter: brightness(0.8) contrast(1.2) hue-rotate(180deg) saturate(1.3);
+	}
+	.basemap-bright {
+	  filter: brightness(1.5);
+	}
+
+	.map-title {
+	  position: absolute;
+	  top: 10px;
+	  left: 50px;
+	  z-index: 1000;
+	  background: white;
+	  padding: 12px 18px;
+	  justify-content: center;
+	  text-align: center;
+	  font-size: 18px;
+	  font-weight: bold;
+	  color: #222;
+	  border-radius: 6px;
+	  border: 1px solid #ccc;
+	  box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+	}
+
+
+    .filter-box, .legend, .basemap-switch, .legend-title {
+      position: absolute;
+      background: white;
+      padding: 10px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      z-index: 1000;
+      font-size: 13px;
+    }
+
+
+    .filter-box { top: 20px; right: 30px; }
+    .basemap-switch { top: 85px; left: 50px; }
+    .legend-title { top: 10px; left: 50px; font-weight: bold; }
+    .legend { bottom: 20px; right: 20px; }
+
+    .legend i {
+      width: 14px; height: 14px;
+      display: inline-block;
+      margin-right: 6px;
+    }
+  </style>
+</head>
+
+<body>
+
+<div id="map"></div>
+<div class="map-title" >CBCity Public Tree Planting<br> Integrated Priority Assessment Map</div>
+
+<div class="filter-box">
+  <b>Filter by Type:</b><br>
+  <div id="type-filters"></div>
+</div>
+
+<div class="basemap-switch">
+  <b>Basemap:</b>
+
+  <label>
+    <input type="radio" name="basemap" value="osm" checked onchange="changeBasemap(this.value)">
+    Light
+  </label>
+
+  <label>
+    <input type="radio" name="basemap" value="imagery" onchange="changeBasemap(this.value)">
+    Imagery
+  </label>
+
+  <label>
+    <input type="radio" name="basemap" value="dark" onchange="changeBasemap(this.value)">
+    Dark
+  </label>
+</div>
+
+<script>
+
+// LOAD MAP
+var map = L.map('map').setView([-33.93, 151.05], 13);
+map.createPane('labelsPane');
+map.getPane('labelsPane').style.zIndex = 650;
+map.getPane('labelsPane').style.pointerEvents = 'none';
+
+// BASEMAPS
+var osm = L.tileLayer(
+  'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', {
+	attribution: 'IPA prepared by <a href="https://www.edgeimpact.global/">Edge Impact</a> | &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | &copy; <a href="https://carto.com/attributions">CARTO</a>',
+	//className: 'basemap-filter',
+	subdomains: 'abcd',
+	maxZoom: 18
+}).addTo(map);
+
+var dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+	attribution: 'IPA prepared by <a href="https://www.edgeimpact.global/">Edge Impact</a> | &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | &copy; <a href="https://carto.com/attributions">CARTO</a>',
+	className: 'basemap-bright',
+	subdomains: 'abcd',
+	maxZoom: 18
+});
+
+var imagery = L.tileLayer(
+  'https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Imagery/MapServer/tile/{z}/{y}/{x}', {
+	attribution: 'IPA prepared by <a href="https://www.edgeimpact.global/">Edge Impact</a> | &copy; <a href="https://www.spatial.nsw.gov.au/products_and_services/web_services/terms_and_conditions">Department of Customer Service 2020</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | &copy; <a href="https://carto.com/attributions">CARTO</a>',   
+	subdomains: 'abcd',
+	maxZoom: 18
+});
+
+var labels = L.tileLayer(
+  'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png',
+  {
+    pane: 'labelsPane'
+  }
+).addTo(map);
+
+function changeBasemap(type) {
+  map.removeLayer(osm);
+  map.removeLayer(imagery);
+  map.removeLayer(labels);
+  map.removeLayer(dark);
+
+  if (type === 'osm') {
+    osm.addTo(map);
+	labels.addTo(map);
+
+  } else if (type === 'imagery') {
+    imagery.addTo(map);
+    labels.addTo(map);
+
+  } else if (type === 'dark') {
+    dark.addTo(map);
+	labels.addTo(map);
+  }
+}
+
+// COLOUR SCHEMES
+var currentScheme = "default";
+
+function getColor(rank) {
+
+  const schemes = {
+
+    // UFS Default Colours
+    default: {
+      1:'#D73027',2:'#F46D43',3:'#FC8D59',4:'#FDAE61',
+      5:'#FEE08B',6:'#E6F598',7:'#D9EF8B',8:'#A6D96A',
+      9:'#91CF60',10:'#1A9850'
+    },
+
+	protanopia: {
+	1:'#04204f',
+	2:'#053c7a',
+	3:'#1a5a91',
+	4:'#33739e',
+	5:'#5589a8',
+	6:'#84a9c1',
+	7:'#b0c4d9',
+	8:'#c2d1e0',
+	9:'#e3b84f',
+	10:'#d9a030'
+	},
+
+	deuteranopia: {
+	1:'#320063',
+	2:'#462078',
+	3:'#58418a',
+	4:'#6d67b0',
+	5:'#8480b5',
+	6:'#a1a1c4',
+	7:'#c0c0d6',
+	8:'#e0e0ed',
+	9:'#db9c4b',
+	10:'#c45400'
+	},
+
+	tritanopia: {
+	1:'#7f3b08',
+	2:'#b35806',
+	3:'#e08214',
+	4:'#fdb863',
+	5:'#fee0b6',
+	6:'#d8daeb',
+	7:'#99d8c9',
+	8:'#66c2a4',
+	9:'#238b45',
+	10:'#00441b'
+	},
+	
+	random: {
+	1:'#FA84BF',
+	2:'#00E5FF',
+	3:'#FFD700',
+	4:'#7D2AE8',
+	5:'#ADFF2F',
+	6:'#FF5722',
+	7:'#007BFF',
+	8:'#D8006C',
+	9:'#2ECC71',
+	10:'#FFC107'
+	},
+
+    greyscale: {
+	1:'#1a1a1a',
+	2:'#333333',
+	3:'#4d4d4d',
+	4:'#666666',
+	5:'#808080',
+	6:'#999999',
+	7:'#b3b3b3',
+	8:'#cccccc',
+	9:'#dadada',
+	10:'#c6c6c6'
+    }
+  };
+
+  return schemes[currentScheme][rank] || '#999';
+}
+
+// FEATURE LAYER
+var featureLayer = L.esri.featureLayer({
+  url: "https://services2.arcgis.com/Ax17MufLaTdpFneh/ArcGIS/rest/services/IPA_Final_100426_Public/FeatureServer/0",
+
+  style: function (feature) {
+    return {
+      fillColor: getColor(feature.properties.OrderPri),
+      weight: 1,
+      opacity: 0.7,
+      color: getColor(feature.properties.OrderPri),
+      fillOpacity: 0.7
+    };
+  }
+}).addTo(map);
+
+
+
+var selectedLayer = null;
+
+featureLayer.on("click", function (e) {
+  var layer = e.layer;
+  if (selectedLayer) {
+    featureLayer.resetStyle(selectedLayer);
+  }
+
+  // Highlight clicked
+  layer.setStyle({
+	  weight: 8,
+	  opacity: 1,
+      //color: '#fa14f6'
+	  color: '#FF43FC'
+  });
+
+  selectedLayer = layer;
+});
+
+// Pop up Info
+featureLayer.bindPopup(function(layer){
+  let p = layer.feature.properties;
+  return `
+    <b>Priority:</b> ${p.OrderPri}<br>
+    <b>IPA Score:</b> ${p.IPA_Score}<br>
+    <b>Address:</b> ${p.Address}<br>
+    <b>Type:</b> ${p.Type}<br>
+  `;
+});
+
+ 
+
+// DYNAMIC FILTERS
+var types = new Set();
+
+featureLayer.on("createfeature", function(e){
+  types.add(e.feature.properties.Type);
+  buildTypeFilters();
+});
+
+function buildTypeFilters(){
+  var container = document.getElementById("type-filters");
+  container.innerHTML = "";
+
+  types.forEach(t => {
+    let cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = t;
+    cb.checked = true;
+    cb.onchange = applyFilters;
+
+    let label = document.createElement("label");
+    label.textContent = " " + t;
+
+    let div = document.createElement("div");
+    div.appendChild(cb);
+    div.appendChild(label);
+    container.appendChild(div);
+  });
+}
+
+// PRIORITY RANGES
+var rankRanges = Array.from({length:10}, (_,i)=>({from:i+1,to:i+1}));
+
+// LEGEND
+var legend = L.control({ position: 'bottomright' });
+
+legend.onAdd = function () {
+  var div = L.DomUtil.create('div', 'legend');
+
+  div.innerHTML += "<b>Priority</b><br><br>";
+  div.innerHTML += `
+    <div style="margin-top:-15px; margin-bottom:5px;">
+      <input type="checkbox" id="select-all-priority" checked onchange="toggleAllPriorities(this)">
+      <label for="select-all-priority"> Select None</label>
+    </div>
+  `;
+
+rankRanges.forEach((r, i) => {
+
+let labelText = (r.from === 1) ? "1" :
+                (r.from === 10) ? "10" :
+                r.from;
+
+  div.innerHTML += `
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+      <input class="priority-checkbox" type="checkbox" value="${r.from}" checked onchange="updateSelectAllState(); applyFilters();">
+      <i style="background:${getColor(r.from)}; width:50px; height:14px;"></i>
+      <span>${labelText}</span>
+    </div>`;
+	
+});
+  div.innerHTML += `
+  <div style="margin-top:15px;">
+    <label><b>Colour Scheme:</b></label><br>
+    <select id="colour-scheme" onchange="updateColourScheme()" style="width:100%; margin-top:4px;">
+	<option value="default">Default</option>
+<option value="protanopia">Protanopia</option>
+<option value="deuteranopia">Deuteranopia</option>
+<option value="tritanopia">Tritanopia</option>
+<option value="random">Random</option>
+<option value="greyscale">Greyscale</option>
+    </select>
+  </div>
+`;
+  return div;
+};
+legend.addTo(map);
+
+
+
+// COLOUR SCHEME SELECTION
+function updateColourScheme() {
+  const dropdown = document.getElementById("colour-scheme");
+  currentScheme = dropdown.value;
+
+
+  featureLayer.setStyle(function (feature) {
+    return {
+      color: getColor(feature.properties.OrderPri),
+      weight: 1,
+      fillOpacity: 0.8
+    };
+  });
+
+  // Update legend
+  document.querySelectorAll('.legend i').forEach((el, index) => {
+    const rank = index + 1;
+    el.style.background = getColor(rank);
+  });
+}
+
+
+function toggleAllPriorities(masterCheckbox) {
+  const checkboxes = document.querySelectorAll('.priority-checkbox');
+
+  const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+  checkboxes.forEach(cb => cb.checked = !allChecked);
+  masterCheckbox.nextElementSibling.textContent = allChecked ? " Select All" : " Select None";
+  updateSelectAllState();
+  applyFilters();
+}
+
+function updateSelectAllState() {
+  const checkboxes = document.querySelectorAll('.priority-checkbox');
+  const master = document.getElementById('select-all-priority');
+
+  const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+  const noneChecked = Array.from(checkboxes).every(cb => !cb.checked);
+
+  master.checked = allChecked;
+  master.nextElementSibling.textContent = allChecked ? " Select None" : " Select All";
+}
+
+// FILTER FUNCTION (SERVER SIDE)
+function applyFilters(){
+
+  // type
+  var selectedTypes = Array.from(
+    document.querySelectorAll('#type-filters input:checked')
+  ).map(cb => `'${cb.value}'`);
+
+  // priority
+var selectedRanks = Array.from(
+  document.querySelectorAll('.priority-checkbox:checked')
+).map(cb => parseInt(cb.value));
+
+  var where = "1=1";
+
+  if (selectedTypes.length > 0){
+    where += " AND Type IN (" + selectedTypes.join(",") + ")";
+  }
+
+// PRIORITY FILTER
+if (selectedRanks.length === 0) {
+  where += " AND 1=0";
+
+} else if (selectedRanks.length < rankRanges.length) {
+  where += " AND OrderPri IN (" + selectedRanks.join(",") + ")";
+
+} 
+  featureLayer.setWhere(where);
+}
+</script>
+
+</body>
+</html>
