@@ -2,12 +2,18 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>IPA Leaflet Map</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/esri-leaflet/dist/esri-leaflet.js"></script>
+
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPA Leaflet Map</title>
+	<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+	<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+	<script src="https://unpkg.com/esri-leaflet/dist/esri-leaflet.js"></script>
+	<script src="https://unpkg.com/leaflet-textpath/leaflet.textpath.js"></script>
+  
+  
 
   <style>
     html, body, #map {
@@ -21,6 +27,52 @@
 	}
 	.basemap-bright {
 	  filter: brightness(1.5);
+	}
+	
+	.dark-basemap {
+		filter: invert(100%)
+            hue-rotate(180deg)
+            brightness(70%)
+            contrast(85%)
+            saturate(60%);
+	}
+		
+	.street-label {
+		background: transparent;
+		border: none;
+		box-shadow: none;
+		padding: 0;
+
+		color: #ffffff;
+		font-family: Arial, Helvetica, sans-serif;
+		font-size: 11px;
+		font-weight: 600;
+
+		text-shadow:
+			-1px -1px 2px #222,
+			 1px -1px 2px #222,
+			-1px  1px 2px #222,
+			 1px  1px 2px #222;
+		white-space: nowrap;
+		pointer-events: none !important;
+	}
+
+	.street-label::before {
+		display: none;
+	}
+
+    color: white;
+    font-family: Arial, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+
+    text-shadow:
+        -1px -1px 2px #333,
+         1px -1px 2px #333,
+        -1px  1px 2px #333,
+         1px  1px 2px #333;
+
+    white-space: nowrap;
 	}
 
 	.map-title {
@@ -92,67 +144,242 @@
     <input type="radio" name="basemap" value="dark" onchange="changeBasemap(this.value)">
     Dark
   </label>
+
+  <label>
+    <input type="checkbox" id="streetLabelsCheckbox" onchange="toggleStreetLabels(this.checked)">
+    Show Street labels
+  </label>
 </div>
 
 <script>
-
 // LOAD MAP
 var map = L.map('map').setView([-33.93, 151.05], 13);
+
+// LABEL PANE
 map.createPane('labelsPane');
 map.getPane('labelsPane').style.zIndex = 650;
 map.getPane('labelsPane').style.pointerEvents = 'none';
 
 // BASEMAPS
-var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    {maxZoom: 19,
-        attribution:
-            'IPA prepared by <a href="https://www.edgeimpact.global/" target="_blank">' +
-            'Edge Impact</a> | ' +
-            '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">' +
-            'OpenStreetMap</a> contributors'
-    }
-).addTo(map);
 
-var dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
-	attribution: 'IPA prepared by <a href="https://www.edgeimpact.global/">Edge Impact</a> | &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | &copy; <a href="https://carto.com/attributions">CARTO</a>',
-	className: 'basemap-bright',
-	subdomains: 'abcd',
-	maxZoom: 18
+	var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+		{maxZoom: 19,
+			attribution:
+				'IPA prepared by <a href="https://www.edgeimpact.global/" target="_blank">' +
+				'Edge Impact</a> | ' +
+				'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">' +
+				'OpenStreetMap</a> contributors'
+		}
+	).addTo(map);
+
+	var dark = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+		{maxZoom: 19,
+			attribution:
+				'IPA prepared by <a href="https://www.edgeimpact.global/" target="_blank">' +
+				'Edge Impact</a> | ' +
+				'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">' +
+				'OpenStreetMap</a> contributors',
+
+			className: 'dark-basemap'
+		}
+	);
+
+	var imagery = L.tileLayer('https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Imagery/MapServer/tile/{z}/{y}/{x}',
+		{maxZoom: 18,
+			attribution:
+				'IPA prepared by <a href="https://www.edgeimpact.global/" target="_blank">' +
+				'Edge Impact</a> | ' +
+				'&copy; <a href="https://www.spatial.nsw.gov.au/products_and_services/web_services/terms_and_conditions" target="_blank">' +
+				'Department of Customer Service 2020</a>'
+		}
+	);
+
+
+
+// STREET LABELS
+
+	var streetLabelPositions = {};
+	var maximumLabelsPerStreet = 4;
+
+	function getMinimumLabelDistance(hierarchy) {
+
+		if (hierarchy === 'Motorway') {
+			return 1500;
+
+		} else if (hierarchy === 'State') {
+			return 1000;
+
+		} else if (hierarchy === 'Regional') {
+			return 750;
+
+		} else if (hierarchy === 'Local') {
+			return 350;
+		}
+
+		return 500;
+	}
+
+	var streetLabels = L.esri.featureLayer({
+    url: 'https://services2.arcgis.com/Ax17MufLaTdpFneh/ArcGIS/rest/services/Road_Section_Hierarchy_Map/FeatureServer/0',
+    pane: 'labelsPane',
+
+    style: function () {
+        return {
+            color: 'transparent',
+            weight: 0,
+            opacity: 0,
+            fillOpacity: 0,
+			interactive: false
+        };
+    },
+
+    onEachFeature: function (feature, layer) {
+
+        var streetName = feature.properties.STREET_NAM;
+        var hierarchy = feature.properties.STATE_HIER;
+
+        if (!streetName) {
+            return;
+        }
+
+        var streetKey = streetName
+            .trim()
+            .toUpperCase();
+
+        var minimumLabelDistance =
+            getMinimumLabelDistance(hierarchy);
+
+        var labelPosition =
+            layer.getBounds().getCenter();
+
+        if (!streetLabelPositions[streetKey]) {
+            streetLabelPositions[streetKey] = [];
+        }
+
+        var existingPositions =
+            streetLabelPositions[streetKey];
+
+        if (
+            existingPositions.length >=
+            maximumLabelsPerStreet
+        ) {
+            return;
+        }
+
+        var farEnoughAway = true;
+
+        for (
+            var i = 0;
+            i < existingPositions.length;
+            i++
+        ) {
+
+            var distance = map.distance(
+                labelPosition,
+                existingPositions[i]
+            );
+
+            if (distance < minimumLabelDistance) {
+                farEnoughAway = false;
+                break;
+            }
+        }
+
+        if (farEnoughAway) {
+
+				layer.bindTooltip(
+					streetName,
+					{
+						permanent: true,
+						direction: 'center',
+						className: 'street-label',
+						pane: 'labelsPane',
+						interactive: false
+					}
+				);
+
+            existingPositions.push(
+                labelPosition
+            );
+		}
+		}
 });
 
-var imagery = L.tileLayer(
-  'https://maps.six.nsw.gov.au/arcgis/rest/services/public/NSW_Imagery/MapServer/tile/{z}/{y}/{x}', {
-	attribution: 'IPA prepared by <a href="https://www.edgeimpact.global/">Edge Impact</a> | &copy; <a href="https://www.spatial.nsw.gov.au/products_and_services/web_services/terms_and_conditions">Department of Customer Service 2020</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | &copy; <a href="https://carto.com/attributions">CARTO</a>',   
-	subdomains: 'abcd',
-	maxZoom: 18
-});
+// STREET LABEL ZOOM LEVELS
 
-//var labels = L.tileLayer(
-//  'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png',
-//  {
-//    pane: 'labelsPane'
-//  }
-//).addTo(map);
+	function updateStreetLabels() {
+		streetLabelPositions = {};
+		var zoom = map.getZoom();
+		if (zoom >= 17) {
+			streetLabels.setWhere(
+				"STATE_HIER IN ('State', 'Regional', 'Local')"
+			);
 
-function changeBasemap(type) {
-  map.removeLayer(osm);
-  map.removeLayer(imagery);
-  map.removeLayer(labels);
-  map.removeLayer(dark);
+		} else if (zoom >= 16) {
+			streetLabels.setWhere(
+				"STATE_HIER IN ('Motorway', 'State', 'Regional')"
+			);
 
-  if (type === 'osm') {
-    osm.addTo(map);
-	labels.addTo(map);
+		} else if (zoom >= 14) {
+			streetLabels.setWhere(
+				"STATE_HIER IN ('Motorway', 'State')"
+			);
 
-  } else if (type === 'imagery') {
-    imagery.addTo(map);
-    labels.addTo(map);
+		} else if (zoom >= 13) {
+			streetLabels.setWhere(
+				"STATE_HIER = 'Motorway'"
+			);
 
-  } else if (type === 'dark') {
-    dark.addTo(map);
-	labels.addTo(map);
-  }
-}
+		} else {
+			streetLabels.setWhere(
+				"1=0"
+			);
+		}
+	}
+
+	map.on('zoomend', function () {
+
+		if (map.hasLayer(streetLabels)) {
+			updateStreetLabels();
+		}
+
+	});
+	updateStreetLabels();
+
+	function toggleStreetLabels(show) {
+
+		if (show) {
+
+			updateStreetLabels();
+			
+			if (!map.hasLayer(streetLabels)) {
+				streetLabels.addTo(map);
+			}
+
+		} else {
+
+			if (map.hasLayer(streetLabels)) {
+				map.removeLayer(streetLabels);
+			}
+		}
+	}
+
+// BASEMAP SWITCHER
+
+	function changeBasemap(type) {
+		map.removeLayer(osm);
+		map.removeLayer(imagery);
+		map.removeLayer(dark);
+		
+		if (type === 'osm') {
+			osm.addTo(map);
+		} else if (type === 'imagery') {
+			imagery.addTo(map);
+		} else if (type === 'dark') {
+			dark.addTo(map);
+		}
+	}
+
 
 // COLOUR SCHEMES
 var currentScheme = "default";
