@@ -103,13 +103,15 @@ map.getPane('labelsPane').style.zIndex = 650;
 map.getPane('labelsPane').style.pointerEvents = 'none';
 
 // BASEMAPS
-var osm = L.tileLayer(
-  'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', {
-	attribution: 'IPA prepared by <a href="https://www.edgeimpact.global/">Edge Impact</a> | &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | &copy; <a href="https://carto.com/attributions">CARTO</a>',
-	//className: 'basemap-filter',
-	subdomains: 'abcd',
-	maxZoom: 18
-}).addTo(map);
+var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {maxZoom: 19,
+        attribution:
+            'IPA prepared by <a href="https://www.edgeimpact.global/" target="_blank">' +
+            'Edge Impact</a> | ' +
+            '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">' +
+            'OpenStreetMap</a> contributors'
+    }
+).addTo(map);
 
 var dark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
 	attribution: 'IPA prepared by <a href="https://www.edgeimpact.global/">Edge Impact</a> | &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | &copy; <a href="https://carto.com/attributions">CARTO</a>',
@@ -125,12 +127,12 @@ var imagery = L.tileLayer(
 	maxZoom: 18
 });
 
-var labels = L.tileLayer(
-  'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png',
-  {
-    pane: 'labelsPane'
-  }
-).addTo(map);
+//var labels = L.tileLayer(
+//  'https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png',
+//  {
+//    pane: 'labelsPane'
+//  }
+//).addTo(map);
 
 function changeBasemap(type) {
   map.removeLayer(osm);
